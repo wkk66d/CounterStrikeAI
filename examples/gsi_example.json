@@ -1,0 +1,64 @@
+{
+  "provider": {
+    "name": "Counter-Strike: Global Offensive",
+    "appid": 730
+  },
+  "map": {
+    "name": "de_mirage",
+    "mode": "competitive",
+    "round": 7
+  },
+  "round": {
+    "phase": "live",
+    "bomb": "planted"
+  },
+  "allplayers": {
+    "76561198000000001": {
+      "team": "T",
+      "observer_slot": 0,
+      "name": "T1",
+      "state": {
+        "health": 100,
+        "armor": 100,
+        "helmet": true,
+        "money": 5000,
+        "flashed": 0
+      },
+      "weapons": {
+        "weapon_0": {"name": "weapon_ak47", "type": "Rifle", "state": "active"},
+        "weapon_1": {"name": "weapon_c4", "type": "C4", "state": "holstered"}
+      },
+      "position": "-400.0, 200.0, 64.0"
+    },
+    "76561198000000002": {
+      "team": "T",
+      "observer_slot": 1,
+      "name": "T2",
+      "state": {
+        "health": 0,
+        "armor": 0,
+        "helmet": false,
+        "money": 1000,
+        "flashed": 0
+      },
+      "weapons": {},
+      "position": "0.0, 0.0, 0.0"
+    },
+    "76561198000000003": {
+      "team": "CT",
+      "observer_slot": 5,
+      "name": "CT1",
+      "state": {
+        "health": 100,
+        "armor": 100,
+        "helmet": true,
+        "money": 6000,
+        "flashed": 2.5
+      },
+      "weapons": {
+        "weapon_0": {"name": "weapon_m4a1_silencer", "type": "Rifle", "state": "active"}
+      },
+      "position": "300.0, -250.0, 72.0"
+    }
+  }
+}
