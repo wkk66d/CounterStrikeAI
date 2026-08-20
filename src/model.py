@@ -199,6 +199,11 @@ def finetune_from(pretrained_artifact, X, y, groups=None, test_frac=0.25,
     }
 
 
+def _identity_transform(X):
+    '''对 X 做恒等变换（用于树模型，不需要特征缩放）。'''
+    return np.asarray(X, dtype=np.float64)
+
+
 def _continuous_feature_mask(feature_names):
     '''识别连续型特征：只对这些特征加测试期噪声（离散/类别特征不加）。
 

@@ -1,0 +1,34 @@
+{
+  "version": "winrate_model_0820",
+  "model_type": "XGBoost (CalibratedClassifierCV, 3-fold isotonic)",
+  "base_estimator": {
+    "library": "xgboost",
+    "tree_method": "hist",
+    "max_depth": 6,
+    "learning_rate": 0.05,
+    "n_estimators": 300,
+    "early_stopping_rounds": 10,
+    "best_iteration": 162
+  },
+  "feature_dim": 117,
+  "feature_description": "17 (round context + team agg) + 10 players x 10 dims; no money / no cross-round features",
+  "training": {
+    "data": "data/crawl/parts (incl. subdir esta)",
+    "rows": 3300482,
+    "groups": 4006,
+    "split": "GroupShuffleSplit test 0.25, seed 7",
+    "base_ct_win_rate": 0.5029
+  },
+  "post_processing": {
+    "calibration": "isotonic cv=3",
+    "stretch": [0.0, 1.0],
+    "logit_limit": 9.0,
+    "temperature": 1.0,
+    "output_range": "open interval (0,1), approx [0.0001, 0.9999], never 0/1"
+  },
+  "holdout_metrics": {
+    "raw": {"accuracy": 0.7366, "auc": 0.8367, "brier": 0.1630},
+    "final": {"accuracy": 0.7369, "auc": 0.8371, "brier": 0.1628}
+  },
+  "source": "https://github.com/wkk66d/CounterStrikeAI (model updated 2026-08-20)"
+}

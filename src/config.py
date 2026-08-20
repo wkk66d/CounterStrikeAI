@@ -10,7 +10,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIR = PROJECT_ROOT / "model"
 # 默认加载的模型：117 维 early-stopping MLP + isotonic + logit 限幅 ±9
-MODEL_ARTIFACT = MODEL_DIR / "winrate_model.joblib"
+MODEL_ARTIFACT = MODEL_DIR / "winrate_model_0820.joblib"
 
 # 回合切面常量（与训练端一致）
 MAX_ROUND_SECONDS = 140.0

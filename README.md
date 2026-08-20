@@ -25,9 +25,10 @@ P(CT 胜) ∈ (0,1)，T 胜 = 1 − P(CT)
 
 - 特征空间：**117 维** = 17（回合上下文 + 团队聚合）+ 10 名玩家 × 10 维。
 - 不含跨回合信息（无比分差 / Momentum / 金钱），只看「本回合当前可见状态」。
-- 训练：early-stopping 深度 MLP（256-128-64），2,423 个 demo / 1,576,230 条切面，按比赛分组防泄漏。
-- 后处理：3 折 isotonic 校准 + 线性拉伸 + **logit 限幅 ±9（T=1.0）**。
-- 输出范围：**约 [0.0001, 0.9999]**，严格位于 (0,1) 开区间，**不会直接输出 0 或 1**（避免过度自信）。
+- **模型版本：winrate_model_0820（XGBoost）**，独立项目默认模型指向 `model/winrate_model_0820.joblib`。
+- 训练：XGBoost（tree_method=hist，早停 162 轮）+ 3 折 isotonic 校准，**3,300,482 条切面 / 4,006 场**，按比赛分组防泄漏。
+- 留出集指标：**Acc 0.7369 / AUC 0.8371 / Brier 0.1628**。
+- 后处理：线性拉伸 + **logit 限幅 ±9（T=1.0）**，输出范围 **约 [0.0001, 0.9999]**，严格位于 (0,1) 开区间，**不会直接输出 0 或 1**。
 
 ## 目录结构
 
@@ -36,9 +37,10 @@ CounterStrikeAI/
 ├── README.md            # 本文件
 ├── requirements.txt     # 依赖
 ├── model/
-│   └── winrate_model.joblib   # 已训练模型（117 维）
+│   ├── winrate_model_0820.joblib   # XGBoost 模型（117 维，v0820）
+│   └── winrate_model_0820.json      # 模型卡片（版本/指标/后处理）
 ├── src/
-│   ├── config.py        # 最小配置（默认指向 model/winrate_model.joblib）
+│   ├── config.py        # 最小配置（默认指向 model/winrate_model_0820.joblib）
 │   ├── features.py      # 切面 → 117 维特征
 │   ├── model.py         # 模型加载 / 概率后处理
 │   └── live_predict.py  # GSI 单截面实时预测（入口）
@@ -47,6 +49,8 @@ CounterStrikeAI/
 ```
 
 ## 安装
+
+> 模型为 XGBoost 训练产物，运行时需要 `xgboost` 包参与反序列化；已在 requirements.txt 中加好。
 
 ```bash
 cd CounterStrikeAI
@@ -72,7 +76,7 @@ python -m src.live_predict --gsi examples/gsi_example.json \
 输出示例：
 
 ```json
-{"p_ct_win": 0.4521, "p_t_win": 0.5479, "latency_ms": 2.31}
+{"p_ct_win": 0.1575, "p_t_win": 0.8425, "latency_ms": 2.37}
 ```
 
 - `p_ct_win`：CT 方回合胜率
