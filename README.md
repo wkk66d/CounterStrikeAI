@@ -30,6 +30,16 @@ P(CT 胜) ∈ (0,1)，T 胜 = 1 − P(CT)
 - 留出集指标：**Acc 0.7369 / AUC 0.8371 / Brier 0.1628**。
 - 后处理：线性拉伸 + **logit 限幅 ±9（T=1.0）**，输出范围 **约 [0.0001, 0.9999]**，严格位于 (0,1) 开区间，**不会直接输出 0 或 1**。
 
+本仓库**只分发训练好的模型，不包含原始数据**；模型的训练数据来自主项目 CSAI 收集的以下公开数据集：
+
+| 来源 | 数据集 | 说明 |
+|---|---|---|
+| `blanchon` | [blanchon/cs2_dataset_demo](https://huggingface.co/datasets/blanchon/cs2_dataset_demo) | HLTV 职业 CS2 全场录像（主源，CC-BY-4.0，经 hf-mirror 访问） |
+| `aldigobbler` | [aldigobbler/cs2demos](https://huggingface.co/datasets/aldigobbler/cs2demos) | HLTV 职业 CS2 录像（177 场） |
+| `cs2pov` | [cs2povarchive/cs2-demos](https://huggingface.co/datasets/cs2povarchive/cs2-demos) | 职业赛事全程/视角录像 |
+| `vasy` | [Vasy7777/cs2-demo-archive](https://huggingface.co/datasets/Vasy7777/cs2-demo-archive) | 比赛录像存档 |
+| `esta` | [pnxenopoulos/esta](https://github.com/pnxenopoulos/esta) | CS:GO 2021~2022 已解析数据（CC-BY-SA-4.0） |
+
 ## 目录结构
 
 ```
