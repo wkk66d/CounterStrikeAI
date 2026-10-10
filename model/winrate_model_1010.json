@@ -1,0 +1,259 @@
+{
+  "version": "winrate_model_1010",
+  "model_type": "分阶段 XGBoost（弱信号先训练 + 上一阶段增量续训）",
+  "base_estimator": {
+    "library": "xgboost",
+    "tree_method": "hist",
+    "max_depth": 6,
+    "learning_rate": 0.05,
+    "total_trees": 1155,
+    "stages": 8
+  },
+  "train_order": [
+    "S08_flash",
+    "S05_time",
+    "S04_bomb",
+    "S06_map_position",
+    "S01_survival",
+    "S07_height",
+    "S03_health",
+    "S02_loadout"
+  ],
+  "stage_description": {
+    "approach": "按信息家族分 8 个阶段，每阶段用上一阶段 booster 增量续训",
+    "order_rule": "按家族独立判别力升序（弱信号先训练）",
+    "masking": "固定 117 列，未训练家族置 0"
+  },
+  "feature_dim": 117,
+  "feature_description": "17 (round context + team agg) + 10 players x 10 dims; no money / no cross-round features",
+  "training": {
+    "data": "data/crawl/parts (incl. subdir esta)",
+    "rows": 3300482,
+    "groups": 4006,
+    "split": "GroupShuffleSplit 60/20/20 + 10% 独立校准集，按比赛分组",
+    "base_ct_win_rate": 0.5028538255927467,
+    "calib_rows": 197971
+  },
+  "post_processing": {
+    "calibration": "isotonic cv=3（3 折交叉校准，协议与 0820 一致）",
+    "stretch": [
+      9.999999974752427e-07,
+      0.9999989867210388
+    ],
+    "logit_limit": 9.0,
+    "temperature": 1.0,
+    "output_range": [
+      0.00012339457598623172,
+      0.9998766054240137
+    ],
+    "note": "open interval (0,1), never 0/1"
+  },
+  "holdout_metrics": {
+    "raw": {
+      "auc": 0.8312612276221794,
+      "brier": 0.1656644344329834,
+      "acc": 0.7300922742078096
+    },
+    "final": {
+      "accuracy": 0.7306998783280306,
+      "auc": 0.8311465845210368,
+      "brier": 0.16525485600324127
+    }
+  },
+  "comparison": {},
+  "stage_metrics": [
+    {
+      "step": 1,
+      "family": "S08_flash",
+      "n_features_active": 10,
+      "trees_added": 105,
+      "trees_total": 105,
+      "best_iteration": 64,
+      "test": {
+        "auc": 0.50682798702767,
+        "brier": 0.24985548853874207,
+        "acc": 0.5031868987250894
+      },
+      "val": {
+        "auc": 0.5071391769068506,
+        "brier": 0.24984246492385864,
+        "acc": 0.5048597997010731
+      },
+      "d_auc": 0.006827987027669957,
+      "d_brier": -0.00014451146125793457,
+      "family_perm_dauc": 0.007061938948254953,
+      "family_perm_std": 0.00030446171174629586,
+      "verdict": "OK",
+      "elapsed": 5.3964684009552
+    },
+    {
+      "step": 2,
+      "family": "S05_time",
+      "n_features_active": 12,
+      "trees_added": 150,
+      "trees_total": 255,
+      "best_iteration": 254,
+      "test": {
+        "auc": 0.592378156527022,
+        "brier": 0.23778323829174042,
+        "acc": 0.5738594197531797
+      },
+      "val": {
+        "auc": 0.5991138444174715,
+        "brier": 0.23771080374717712,
+        "acc": 0.5760160382340043
+      },
+      "d_auc": 0.08555016949935201,
+      "d_brier": -0.012072250247001648,
+      "family_perm_dauc": 0.08944139747764442,
+      "family_perm_std": 0.0006930148831510977,
+      "verdict": "OK",
+      "elapsed": 7.927853584289551
+    },
+    {
+      "step": 3,
+      "family": "S04_bomb",
+      "n_features_active": 25,
+      "trees_added": 150,
+      "trees_total": 405,
+      "best_iteration": 402,
+      "test": {
+        "auc": 0.6233493041991317,
+        "brier": 0.23208242654800415,
+        "acc": 0.5809269741465958
+      },
+      "val": {
+        "auc": 0.6348952140336956,
+        "brier": 0.23104596138000488,
+        "acc": 0.586212966029135
+      },
+      "d_auc": 0.030971147672109733,
+      "d_brier": -0.005700811743736267,
+      "family_perm_dauc": 0.05684966602885035,
+      "family_perm_std": 0.0004901234529109947,
+      "verdict": "OK",
+      "elapsed": 7.841426372528076
+    },
+    {
+      "step": 4,
+      "family": "S06_map_position",
+      "n_features_active": 50,
+      "trees_added": 150,
+      "trees_total": 555,
+      "best_iteration": 554,
+      "test": {
+        "auc": 0.7722025602600019,
+        "brier": 0.1881963014602661,
+        "acc": 0.6792454826447405
+      },
+      "val": {
+        "auc": 0.783899275403511,
+        "brier": 0.18480156362056732,
+        "acc": 0.6895053386197453
+      },
+      "d_auc": 0.1488532560608702,
+      "d_brier": -0.04388612508773804,
+      "family_perm_dauc": 0.19779366337902032,
+      "family_perm_std": 0.0002155594651956783,
+      "verdict": "OK",
+      "elapsed": 9.983802556991577
+    },
+    {
+      "step": 5,
+      "family": "S01_survival",
+      "n_features_active": 63,
+      "trees_added": 150,
+      "trees_total": 705,
+      "best_iteration": 702,
+      "test": {
+        "auc": 0.7769339604656677,
+        "brier": 0.18570418655872345,
+        "acc": 0.6817680977607823
+      },
+      "val": {
+        "auc": 0.7875343681559948,
+        "brier": 0.18211579322814941,
+        "acc": 0.6912132792758928
+      },
+      "d_auc": 0.004731400205665759,
+      "d_brier": -0.0024921149015426636,
+      "family_perm_dauc": 0.027893397328627723,
+      "family_perm_std": 0.00032313392352634624,
+      "verdict": "OK",
+      "elapsed": 9.062217235565186
+    },
+    {
+      "step": 6,
+      "family": "S07_height",
+      "n_features_active": 73,
+      "trees_added": 150,
+      "trees_total": 855,
+      "best_iteration": 838,
+      "test": {
+        "auc": 0.7787145863329425,
+        "brier": 0.18547338247299194,
+        "acc": 0.6842665296282582
+      },
+      "val": {
+        "auc": 0.7885928169875356,
+        "brier": 0.18192315101623535,
+        "acc": 0.6932344666899364
+      },
+      "d_auc": 0.0017806258672748987,
+      "d_brier": -0.00023080408573150635,
+      "family_perm_dauc": 0.0022352386462861197,
+      "family_perm_std": 7.827025421545432e-05,
+      "verdict": "OK",
+      "elapsed": 9.261386632919312
+    },
+    {
+      "step": 7,
+      "family": "S03_health",
+      "n_features_active": 85,
+      "trees_added": 150,
+      "trees_total": 1005,
+      "best_iteration": 1003,
+      "test": {
+        "auc": 0.786588168264329,
+        "brier": 0.18310904502868652,
+        "acc": 0.6919416881418952
+      },
+      "val": {
+        "auc": 0.7959868509359513,
+        "brier": 0.17954672873020172,
+        "acc": 0.6998693313524205
+      },
+      "d_auc": 0.00787358193138643,
+      "d_brier": -0.00236433744430542,
+      "family_perm_dauc": 0.016488577327307685,
+      "family_perm_std": 0.0002364304637052291,
+      "verdict": "OK",
+      "elapsed": 9.954042673110962
+    },
+    {
+      "step": 8,
+      "family": "S02_loadout",
+      "n_features_active": 117,
+      "trees_added": 150,
+      "trees_total": 1155,
+      "best_iteration": 1150,
+      "test": {
+        "auc": 0.8312612276221794,
+        "brier": 0.1656644344329834,
+        "acc": 0.7300922742078096
+      },
+      "val": {
+        "auc": 0.8395781145987413,
+        "brier": 0.16167449951171875,
+        "acc": 0.7394816213652189
+      },
+      "d_auc": 0.044673059357850375,
+      "d_brier": -0.017444610595703125,
+      "family_perm_dauc": 0.07863677870737155,
+      "family_perm_std": 4.967212238741387e-05,
+      "verdict": "OK",
+      "elapsed": 10.626653671264648
+    }
+  ],
+  "source": "https://github.com/wkk66d/CounterStrikeAI (model updated 2026-10-10)"
+}

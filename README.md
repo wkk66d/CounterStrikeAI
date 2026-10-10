@@ -21,14 +21,54 @@ P(CT 胜) ∈ (0,1)，T 胜 = 1 − P(CT)
 它**不依赖 .dem / demoparser**、不读取磁盘上的录像，模型启动时加载一次后常驻内存，
 之后每个切面只做一次推理，适合实时接入（约 2–3ms / 次）。
 
+## 模型库
+
+本仓库**并列分发两个已训练模型**，特征空间相同（117 维），可按版本切换：
+
+| 版本 | 构件 | 训练方式 | 校准 | 留出集 Acc | AUC | Brier |
+|---|---|---|---|---|---:|---:|---:|
+| **0820**（默认） | `model/winrate_model_0820.joblib` | XGBoost（hist，早停 162 轮）单次训练 | 3 折 isotonic | **0.7369** | **0.8371** | **0.1628** |
+| **1010** | `model/winrate_model_1010.joblib` | **分阶段 XGBoost**（弱信号先训练 + 上一阶段增量续训），1,155 棵树 / 8 阶段 | 3 折 isotonic | 0.7307 | 0.8311 | 0.1653 |
+
+- 两个模型都在 **3,300,482 条切面 / 4,006 场**（`data/crawl/parts`）上训练，按比赛分组防泄漏，后处理一致
+  （isotonic cv=3 + 线性拉伸 + logit 限幅 ±9，T=1.0，输出严格在 (0,1) 开区间，永不输出 0/1）；
+- **默认仍为 0820**（指标略优），以保证既有接入方行为不变；1010 用 `--model 1010` 选用；
+- 1010 的差异在**训练方式**：把 117 维特征按「信息家族」分 8 个阶段，
+  按家族独立判别力**升序（弱信号先训练）**逐阶段累积，每阶段用上一阶段 booster 做增量续训
+  （零掩码实现：固定 117 列，未训练家族置 0）。
+  这样每个参数的影响都能体现到最终胜率上（实测 8/8 阶段均有非零贡献）。
+
+```bash
+# 查看模型库
+python -m src.live_predict --list-models
+
+# 用默认模型（0820）预测
+python -m src.live_predict --gsi examples/gsi_example.json --snapshot-second 35 --time-remaining 62
+
+# 用新模型（1010）预测
+python -m src.live_predict --model 1010 --gsi examples/gsi_example.json --snapshot-second 35 --time-remaining 62
+```
+
 ## 模型与概率说明
 
 - 特征空间：**117 维** = 17（回合上下文 + 团队聚合）+ 10 名玩家 × 10 维。
 - 不含跨回合信息（无比分差 / Momentum / 金钱），只看「本回合当前可见状态」。
-- **模型版本：winrate_model_0820（XGBoost）**，独立项目默认模型指向 `model/winrate_model_0820.joblib`。
-- 训练：XGBoost（tree_method=hist，早停 162 轮）+ 3 折 isotonic 校准，**3,300,482 条切面 / 4,006 场**，按比赛分组防泄漏。
-- 留出集指标：**Acc 0.7369 / AUC 0.8371 / Brier 0.1628**。
-- 后处理：线性拉伸 + **logit 限幅 ±9（T=1.0）**，输出范围 **约 [0.0001, 0.9999]**，严格位于 (0,1) 开区间，**不会直接输出 0 或 1**。
+- 两个模型均含 isotonic 校准 + 线性拉伸 + **logit 限幅 ±9（T=1.0）**，
+  输出范围约 **[0.0001, 0.9999]**，严格位于 (0,1) 开区间，**不会直接输出 0 或 1**。
+- 单次推理约 **2–4 ms**；模型启动时加载一次后常驻内存。
+
+### winrate_model_1010 的分阶段训练顺序
+
+| 阶段 | 信息家族 | 维度 |
+|---:|---|---:|
+| 1 | `S08_flash` 致盲 | 10 |
+| 2 | `S05_time` 回合时间 | 2 |
+| 3 | `S04_bomb` 炸弹状态 | 13 |
+| 4 | `S06_map_position` 位置与地图 | 25 |
+| 5 | `S01_survival` 存活/减员 | 13 |
+| 6 | `S07_height` 高度 | 10 |
+| 7 | `S03_health` 血量 | 12 |
+| 8 | `S02_loadout` 武器护甲 | 32 |
 
 本仓库**只分发训练好的模型，不包含原始数据**；模型的训练数据来自主项目 CSAI 收集的以下公开数据集：
 
@@ -47,13 +87,15 @@ CounterStrikeAI/
 ├── README.md            # 本文件
 ├── requirements.txt     # 依赖
 ├── model/
-│   ├── winrate_model_0820.joblib   # XGBoost 模型（117 维，v0820）
-│   └── winrate_model_0820.json      # 模型卡片（版本/指标/后处理）
+│   ├── winrate_model_0820.joblib   # XGBoost 模型（117 维，v0820，默认）
+│   ├── winrate_model_0820.json      # 模型卡片（版本/指标/后处理）
+│   ├── winrate_model_1010.joblib   # 分阶段 XGBoost 模型（117 维，v1010）
+│   └── winrate_model_1010.json      # 模型卡片（含 8 阶段训练顺序）
 ├── src/
-│   ├── config.py        # 最小配置（默认指向 model/winrate_model_0820.joblib）
+│   ├── config.py        # 最小配置 + 模型库注册表（--model 0820 / 1010）
 │   ├── features.py      # 切面 → 117 维特征
-│   ├── model.py         # 模型加载 / 概率后处理
-│   └── live_predict.py  # GSI 单截面实时预测（入口）
+│   ├── model.py         # 模型加载 / 概率后处理 / booster 构件适配
+│   └── live_predict.py  # GSI 单截面实时预测（入口，--list-models 查看模型库）
 └── examples/
     └── gsi_example.json # GSI JSON 样例
 ```
@@ -133,11 +175,14 @@ p_cts = pred.predict_many([snapshot_1, snapshot_2, ...])
 
 ## 测试
 
-测试文件位于 `tests/`（本地使用，不随仓库上传）。提交前请先运行：
+测试文件位于 `tests/`（**本地使用，已在 `.gitignore` 中排除，不随仓库上传**）。提交前请先运行：
 
 ```bash
 python -m pytest tests -q
 ```
+
+> `tests/` 下的用例（模型契约、GSI 单截面预测、0820/1010 双模型对照）仅作本地校验；
+> 仓库中不包含任何测试文件。
 
 ## 许可
 

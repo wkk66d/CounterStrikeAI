@@ -225,10 +225,16 @@ def _continuous_feature_mask(feature_names):
 def predict_proba(artifact, X, mc_samples=None, mc_noise=None, seed=0):
     '''预测 (n, 2)：P(非CT胜), P(CT胜)。
 
+    兼容两类构件：
+      - 既有构件（如 winrate_model_0820）：`model` 为 sklearn 估计器
+        （CalibratedClassifierCV 已内含 isotonic 校准）；
+      - 分阶段构件（如 winrate_model_1010）：`model` 为 `XGBStagedClassifier`
+        （包装原生 booster），校准在**构件级**施加（artifact["calibration"]["isotonic"]）。
+
     概率后处理（全部为非时序方法）：
       1. 可选 MC 特征扰动集成（mc_samples>1）：对连续特征加小高斯噪声，
-         多次推理取平均，降低观测噪声造成的波动；
-      2. stretch（isotonic 校准后的温和拉伸）映射到接近 0~1；
+         多次推理取平均，降低观察噪声造成的波动（仅适用于 sklearn 估计器）；
+      2. isotonic 校准（分阶段构件）与 stretch（拉伸）映射到接近 0~1；
       3. 有限 logit 限幅 + 温度缩放：输出严格落在 (0, 1) 开区间，
          不出现 0/1，且在 logit 空间压缩过度自信。
 
@@ -236,15 +242,30 @@ def predict_proba(artifact, X, mc_samples=None, mc_noise=None, seed=0):
     （默认 1 与 0.1，即默认不做 MC 集成）。
     '''
     X = np.asarray(X, dtype=np.float64)
-    expected = artifact["model"].n_features_in_
+    expected = int(artifact["model"].n_features_in_)
     if X.shape[1] != expected:
         raise ValueError(f"特征宽度不匹配：期望 {expected}，实际 {X.shape[1]}")
-    Xs = artifact["scaler"].transform(X)
+    scaler = artifact.get("scaler")
+    Xs = X if scaler is None else scaler.transform(X)
     n_samples = int(artifact.get("mc_samples", 1) if mc_samples is None else mc_samples)
     noise_std = float(artifact.get("mc_noise", 0.1) if mc_noise is None else mc_noise)
 
-    if n_samples <= 1:
-        p_pos_raw = artifact["model"].predict_proba(Xs)[:, 1]
+    # ---- 分阶段构件：模型只给原始概率，由 isotonic 在此统一施加 ----
+    if is_booster_artifact(artifact):
+        cal = artifact.get("calibration") or {}
+        folds = cal.get("isotonic_folds")
+        if folds:
+            # K 折交叉校准：对每折 isotonic 映射取均值
+            # （等价于 CalibratedClassifierCV(method="isotonic") 的折平均）
+            p_raw = np.asarray(artifact["model"].predict_raw(Xs), dtype=np.float64)
+            p_pos = np.mean([np.asarray(f.predict(p_raw), dtype=np.float64)
+                             for f in folds], axis=0)
+        else:
+            p_pos = np.asarray(artifact["model"].predict_raw(Xs), dtype=np.float64)
+            if cal.get("isotonic") is not None:
+                p_pos = np.asarray(cal["isotonic"].predict(p_pos), dtype=np.float64)
+    elif n_samples <= 1:
+        p_pos = artifact["model"].predict_proba(Xs)[:, 1]
     else:
         names = list(artifact.get("feature_names")
                      or [f"f{i}" for i in range(X.shape[1])])
@@ -256,14 +277,13 @@ def predict_proba(artifact, X, mc_samples=None, mc_noise=None, seed=0):
             if cont.any():
                 Xj[:, cont] += rng.normal(0.0, noise_std, size=(len(X), int(cont.sum())))
             acc += artifact["model"].predict_proba(Xj)[:, 1]
-        p_pos_raw = acc / float(n_samples)
+        p_pos = acc / float(n_samples)
 
-    p_pos = p_pos_raw
     stretch = artifact.get("stretch")
     if stretch is not None:
         lo, hi = float(stretch[0]), float(stretch[1])
         if hi - lo > 1e-9:
-            p_pos = (p_pos_raw - lo) / (hi - lo)
+            p_pos = (p_pos - lo) / (hi - lo)
     # 先夹到极小正数，避免 logit 除零；再用 [-limit, limit] 限幅。
     eps = 1e-12
     p_pos = np.clip(p_pos, eps, 1.0 - eps)
@@ -286,3 +306,69 @@ def save_model(artifact, path):
 def load_model(path):
     '''加载模型构件。'''
     return joblib.load(path)
+
+
+# ---------------------------------------------------------------------------
+# 分阶段 XGBoost（booster 构件）的推理适配
+# ---------------------------------------------------------------------------
+
+def is_booster_artifact(artifact):
+    '''判断构件是否为「分阶段 XGBoost booster」类型。
+
+    识别两类：
+      - `XGBStagedClassifier` 包装类（由本模块提供，带显式标记）；
+      - 原生 `xgboost.Booster`（历史构件，未包装）。
+
+    注意：不能只靠类名判断——包装类没有 `num_boosted_rounds`，
+    早期实现因此漏判，导致 isotonic 校准被静默跳过（概率停留在未校准状态）。
+    '''
+    if not isinstance(artifact, dict):
+        return False
+    model = artifact.get("model")
+    if model is None:
+        return False
+    if getattr(model, "_staged_booster_wrapper", False):
+        return True
+    return type(model).__name__ == "Booster" or hasattr(model, "num_boosted_rounds")
+
+
+class XGBStagedClassifier:
+    '''把原生 xgboost Booster 包装成 sklearn 风格分类器（只读推理）。
+
+    分参数训练（弱信号先训练 + 增量续训）产出的是 `xgb.Booster`，
+    其 `predict()` 需要 `xgb.DMatrix` 且要限定 `iteration_range`。
+    本包装类提供 `n_features_in_` 与 `predict_proba(X)`，
+    使 booster 构件能与 CalibratedClassifierCV 走同一条推理路径。
+
+    参数
+    ----
+    postprocess : None / "identity"
+        - None：`predict_proba` 返回**未后处理**的原始概率。
+          构件级 `predict_proba` 会统一施加 isotonic 校准 + 拉伸 + logit 限幅，
+          因此这里必须保持原始输出，否则后处理会被重复施加。
+        - "identity"：保留接口以兼容早期构件（不改变数值）。
+    '''
+
+    def __init__(self, booster, n_features, n_trees=None, postprocess=None):
+        self.booster = booster
+        self.n_features_in_ = int(n_features)
+        self.n_trees = int(n_trees or booster.num_boosted_rounds())
+        self.postprocess = postprocess
+        # 显式标记：供 is_booster_artifact 稳定识别（不依赖类名/属性探测）
+        self._staged_booster_wrapper = True
+        self.classes_ = np.asarray([0, 1])
+
+    def predict_raw(self, X):
+        '''未后处理的正类概率 P(CT 胜)。'''
+        import xgboost as xgb  # 延迟导入：仅 booster 构件需要
+        X = np.asarray(X, dtype=np.float64)
+        if X.shape[1] != self.n_features_in_:
+            raise ValueError(
+                f"特征宽度不匹配：期望 {self.n_features_in_}，实际 {X.shape[1]}")
+        p = self.booster.predict(xgb.DMatrix(X),
+                                 iteration_range=(0, self.n_trees))
+        return np.asarray(p, dtype=np.float64).reshape(-1)
+
+    def predict_proba(self, X):
+        p = self.predict_raw(X)
+        return np.column_stack([1.0 - p, p])

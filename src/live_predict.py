@@ -195,14 +195,21 @@ def gsi_to_snapshot(payload, snapshot_second=None, time_remaining_sec=None,
 
 
 class LivePredictor:
-    '''单切面实时预测器：启动时加载模型，之后每次推理不触碰磁盘与 demo。'''
+    '''单切面实时预测器：启动时加载模型，之后每次推理不触碰磁盘与 demo。
+
+    model_path 可以是：
+      - None            → 默认模型（config.MODEL_ARTIFACT）
+      - 版本号（"0820" / "1010"）→ 从 config.MODEL_CANDIDATES 解析
+      - 文件路径         → 直接加载
+    '''
 
     def __init__(self, model_path=None):
-        self.model_path = model_path or config.MODEL_ARTIFACT
+        self.model_path = config.resolve_model(model_path)
         self.artifact = load_model(self.model_path)
         self._model = self.artifact["model"]
         self._scaler = self.artifact["scaler"]
         self.feature_names = list(self.artifact["feature_names"])
+        self.version = self.artifact.get("version") or self.model_path.stem
 
     def _predict_vector(self, vec):
         # 与 predict_demo 使用同一套概率后处理（stretch + logit 限幅 + 温度缩放），
@@ -241,7 +248,9 @@ def _load_payload(path):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="CS2 实时单切面胜率预测（GSI 接入预留）")
-    parser.add_argument("--model", default=None, help="模型构件路径")
+    parser.add_argument("--model", default=None,
+                        help="模型构件：版本号（0820 / 1010）或文件路径；"
+                             "默认 %s" % config.DEFAULT_MODEL_VERSION)
     parser.add_argument("--json", default=None, help="内部切面 JSON 文件")
     parser.add_argument("--gsi", default=None, help="CS2 GSI JSON 文件")
     parser.add_argument("--snapshot-second", type=float, default=None,
@@ -250,11 +259,20 @@ def main(argv=None):
                         help="当前有效倒计时（秒，GSI 载荷未提供时使用）")
     parser.add_argument("--bomb-countdown", type=float, default=None,
                         help="炸弹爆炸剩余时间（秒，GSI 载荷未提供时使用）")
+    parser.add_argument("--list-models", action="store_true",
+                        help="列出模型库中可用模型后退出")
     args = parser.parse_args(argv)
+
+    if args.list_models:
+        print(json.dumps({
+            "default": config.DEFAULT_MODEL_VERSION,
+            "models": {k: str(v) for k, v in config.MODEL_CANDIDATES.items()},
+        }, ensure_ascii=False, indent=2))
+        return None
 
     if not args.json and not args.gsi:
         parser.error("必须提供 --json 或 --gsi")
-    pred = LivePredictor(args.model)
+    pred = LivePredictor(config.resolve_model(args.model))
     start = time.perf_counter()
     if args.gsi:
         p_ct = pred.predict_gsi(_load_payload(args.gsi),
